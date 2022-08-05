@@ -79,6 +79,18 @@ exports.intersectionOld = function() {
  */
 exports.intersection = function() {
 
+  // Based on the TODO comment in set intersection, this presents an alternative approach --
+  //
+  // After choosing the smallest set, the first went through each element and added it to a collector if it was present in every other set. Using `S` := size of the smallest set, `N` := count of input sets, and `R` := size of result, that should be `S*N` iterations each with a `has`, and `R` adds; max size of the output set is `R`.
+  //
+  // This builds a collector with the same elements as the smallest;
+  // then, for each other set, it removes elements remaining in the
+  // collector that are absent in the considered set. This should be
+  // `S` adds, between `S*N` and `R*N` iterations, each with a `has`
+  // and up to `S - R` with a `delete`; max size of the output set is
+  // `S`. No extra objects are created beyond whatever the set has to
+  // do internally.
+
   // First we need to find the smallest set
   var smallestSize = Infinity,
       smallestSet = null;
@@ -99,12 +111,17 @@ exports.intersection = function() {
   }
 
   var I = new Set([...smallestSet]);
+  // var I = new Set();
+  // var istep, iiter = smallestSet.values();
+  // while ((istep = iiter.next(), !istep.done)) {
+  //   I.add(istep.value)
+  // }
 
   for (i = 0; i < l; i++) {
     var set = arguments[i];
     if (set === smallestSet)
       continue;
-    // Now we need to intersect this set with the others
+    // Now we need to intersect this set with the reducing collector
     var iterator = I.values(),
         step,
         item;
@@ -113,6 +130,10 @@ exports.intersection = function() {
       item = step.value
       if (!set.has(item)) { I.delete(item) }
     }
+
+    // for (const item of I) {
+    //   if (!set.has(item)) { I.delete(item) }
+    // }
   }
 
   return I;
