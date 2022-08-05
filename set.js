@@ -13,7 +13,7 @@
  * @param  {...Set} sets - Sets to intersect.
  * @return {Set}         - The intesection.
  */
-exports.intersection = function() {
+exports.intersectionOld = function() {
   if (arguments.length < 2)
     throw new Error('mnemonist/Set.intersection: needs at least two arguments.');
 
@@ -66,6 +66,53 @@ exports.intersection = function() {
 
     if (add)
       I.add(item);
+  }
+
+  return I;
+};
+
+/**
+ * Variadic function computing the intersection of multiple sets.
+ *
+ * @param  {...Set} sets - Sets to intersect.
+ * @return {Set}         - The intesection.
+ */
+exports.intersection = function() {
+
+  // First we need to find the smallest set
+  var smallestSize = Infinity,
+      smallestSet = null;
+
+  var s, i, l = arguments.length;
+
+  for (i = 0; i < l; i++) {
+    s = arguments[i];
+
+    // If one of the set has no items, we can stop right there
+    if (s.size === 0)
+      return new Set();
+
+    if (s.size < smallestSize) {
+      smallestSize = s.size;
+      smallestSet = s;
+    }
+  }
+
+  var I = new Set([...smallestSet]);
+
+  for (i = 0; i < l; i++) {
+    var set = arguments[i];
+    if (set === smallestSet)
+      continue;
+    // Now we need to intersect this set with the others
+    var iterator = I.values(),
+        step,
+        item;
+
+    while ((step = iterator.next(), !step.done)) {
+      item = step.value
+      if (!set.has(item)) { I.delete(item) }
+    }
   }
 
   return I;
