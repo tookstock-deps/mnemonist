@@ -508,7 +508,7 @@ function makeTests(Cache, name) {
         if (typeof Symbol !== 'undefined') {
           assert.deepStrictEqual(cache[Symbol.toStringTag], `${name}:2/200`);
         }
-        assert.deepStrictEqual(cache.summaryString(), `${name}:2/200`);
+        assert.deepStrictEqual(cache.summary, `${name}:2/200`);
         cache.set(2, 'dos'); cache.set(3, 'tres');
         assert.deepStrictEqual(cache.toString(), `[object ${name}:4/200]`);
         cache = makeExercisedCache(200);
@@ -521,9 +521,9 @@ function makeTests(Cache, name) {
           assert.deepStrictEqual(cache[Symbol.for('nodejs.util.inspect.custom')], cache.inspect);
         });
 
-        it('attaches the summaryString method to the magic [Symbol.toStringTag] property', function () {
+        it('attaches the summary getter to the magic [Symbol.toStringTag] property', function () {
           var cache = makeExercisedCache(7);
-          assert.deepStrictEqual(cache[Symbol.toStringTag], cache.summaryString());
+          assert.deepStrictEqual(cache[Symbol.toStringTag], cache.summary)
         });
       }
 

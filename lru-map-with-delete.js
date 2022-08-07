@@ -49,6 +49,7 @@ if (typeof Symbol !== 'undefined') {
   });
   LRUMapWithDelete.prototype[Symbol.for('nodejs.util.inspect.custom')] = LRUMap.prototype.inspect;
 }
+Object.defineProperty(LRUMapWithDelete.prototype, 'summary', Object.getOwnPropertyDescriptor(LRUMap.prototype, 'summary'));
 
 /**
  * Method used to clear the structure.

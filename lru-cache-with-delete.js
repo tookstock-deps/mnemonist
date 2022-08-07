@@ -49,6 +49,7 @@ if (typeof Symbol !== 'undefined') {
   });
   LRUCacheWithDelete.prototype[Symbol.for('nodejs.util.inspect.custom')] = LRUCache.prototype.inspect;
 }
+Object.defineProperty(LRUCacheWithDelete.prototype, 'summary', Object.getOwnPropertyDescriptor(LRUCache.prototype, 'summary'));
 
 /**
  * Method used to clear the structure.

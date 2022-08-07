@@ -372,9 +372,9 @@ LRUCache.prototype.entries = function() {
 /**
  * Return a short string for interpolation: `LRUCache:size/capacity`
  */
-LRUCache.prototype.summaryString = function summaryString() {
-  return `${this.constructor.name}:${this.size}/${this.capacity}`;
-};
+Object.defineProperty(LRUCache.prototype, 'summary', {
+  get: function() { return `${this.constructor.name}:${this.size}/${this.capacity}` },
+});
 
 /**
  * Attaching the #.entries method to Symbol.iterator if possible.
@@ -382,7 +382,7 @@ LRUCache.prototype.summaryString = function summaryString() {
 if (typeof Symbol !== 'undefined') {
   LRUCache.prototype[Symbol.iterator] = LRUCache.prototype.entries;
   Object.defineProperty(LRUCache.prototype, Symbol.toStringTag, {
-    get: function () { return this.summaryString(); },
+    get: function () { return this.summary; },
   });
 }
 

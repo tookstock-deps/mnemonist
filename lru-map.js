@@ -231,6 +231,7 @@ if (typeof Symbol !== 'undefined') {
   });
   LRUMap.prototype[Symbol.for('nodejs.util.inspect.custom')] = LRUCache.prototype.inspect;
 }
+Object.defineProperty(LRUMap.prototype, 'summary', Object.getOwnPropertyDescriptor(LRUCache.prototype, 'summary'));
 
 /**
  * Static @.from function taking an arbitrary iterable & converting it into
