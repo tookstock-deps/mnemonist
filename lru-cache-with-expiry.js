@@ -19,15 +19,55 @@ var LRUCacheWithDelete = require('./lru-cache-with-delete.js'),
 //
 // Limitations:
 //
-// * The time-to-live (maximum age of any record returned in a read operation
-//   is `(time-to-keep + maximum-delay-between-expires)`. By default the monitor
-//   runs every (1 / 32)th of the TTK; for the default one-hour TTK, that is about
-//   every two minutes. Expiring a 100_000-entry cache takes ?? milliseconds.
-// * ...
+// * The time-to-live (maximum age of any record returned in a read operation)
+//   has the weak guarantee of `(time-to-keep + maximum-delay-between-expires)`.
+//
+// * The expire operation must be done as a whole, and this does not
+//   offer to do it in a separate thread or make any attempt to be
+//   thread safe. However, the benchmarks in `benchmark/lru-cache` show
+//   that a full delete of every item in a 30,000 element cache runs in
+//   less than 5ms on a 2019 Macbook Pro.
+//
+// * Having two expire operations scheduled in the same thread should
+//   be harmless but would give no speedup, so if you found yourself
+//   in a situation where the expire was taking significant time it
+//   could be big trouble.
+//
+// Alternatives considered and discarded:
+//
+// * The expire operation of this class walks the full length of the
+//   age ledger, rather than having say a heap to reveal only the
+//   expirable record. This seems like a bad tradeoff.
+//
+// * Could maintain two or more generations of cached items, rotating
+//   then at ttl/2. (write to both, read from the new generation
+//   falling back to the old generation, and on each expire discard
+//   the oldest generation and add a new empty cache). This would make
+//   expiry O(1), with low impact on individual operations but a
+//   notable tradeoff in cache efficiency.
+//
+// Potential Opportunities for improvement:
+//
+// * Minimize the memory footprint of the age ledger by chunking the
+//   timestamps to bytes or words. In the case of byte (256 age bins)
+//   a 10-minute ttl and otherwise default parameters, an expire
+//   operation would discard everything older than (ttk - ttk/64)
+//   (guaranteeing the ttk but reaping an additional 1.5% of records).
+//   Expire must be called at least once every `2 * ttk` (20 minutes)
+//   or the newest records would be indistinguishable from the oldest
+//   records. (Everything would work but it would be a damn shame for
+//   cache efficiency). A word-sized (64k bins) ledger makes this
+//   pretty trivial, and offering both choices shouldn't be a problem.
+//
+// * For every record it expires we independently doctor the read-age
+//   linked list. It may make more sense to walk the linked list.
 //
 // When the expire() method is called, it deletes every
 // record that is older than the time-to-keep (ttk) cutoff.
 //
+// By default the monitor
+//   runs every (1 / 32)th of the TTK; for the default one-hour TTK, that is about
+//   every two minutes. Expiring a 100_000-entry cache takes ?? milliseconds.
 // When a write happens we record ((getTime() - lastExpireTime()) / (ttk / 32))
 //
 function LRUCacheWithExpiry(Keys, Values, capacity, options = {}) {
@@ -37,39 +77,17 @@ function LRUCacheWithExpiry(Keys, Values, capacity, options = {}) {
   else {
     LRUCacheWithDelete.call(this, Keys, Values, capacity);
   }
-  this.getTime = options.getTime || Date.now;
-  this.ttk = options.ttk || 60 * 60 * 1000; // one hour
-  this.keepTtk = options.keepTtk || Math.floor((7 / 8) * this.ttk);
-  this.agebins = options.agebins || 1000;
-  this.horizon = 100; // number of bins in a ttk.
-
-  // We invalidate (modulo agebins) all bins in whichever range is larger:
-  //    the (currentBin - horizon)th bin to the currentBin, or
-  //    the lastExpiredBin to the current Bin.
-  //
-  // As long as you call expire more frequently than the TTK, no item
-  // older than the TTK will ever be read. Some items older than
-  // `TTK - (horizon/TTK)` will be expired early.
-  //
-  // If you delay for longer than (agebins/horizon - 1) * ttk --
-  // by default 3x the TTK -- we cannot tell the difference between
-  // recently-written and very very old entries.
-
-
-  // this.resolution = options.resolution || (this.agebins / 8)
-  this.ttbin = this.ttk / this.agebins;
-  var AgesBox = typed.getPointerArray(this.agebins);
-  this.ages = new AgesBox(this.capacity);
-
+  this.getTime    = Date.now;
+  this.ttk        = options.ttk || LRUCacheWithExpiry.minutes(15);
+  this.ages       = new Float64Array(this.capacity);
   //
   this.initT = this.getTime();
   this.lastT = this.initT;
-  // if (options.beatsSince) { this.beatsSince = options.beatsSince }
 }
 
-LRUCacheWithExpiry.prototype.numberOfTTKsBeforeRecentEntriesAreExpired = function () {
-  return (this.agebins / this.horizon) - 1;
-};
+/**
+ * LRUCacheWithExpiry inherits from LRUCacheWithDelete
+ */
 
 for (var k in LRUCacheWithDelete.prototype)
   LRUCacheWithExpiry.prototype[k] = LRUCacheWithDelete.prototype[k];
@@ -88,16 +106,6 @@ if (typeof Symbol !== 'undefined') {
   LRUCacheWithExpiry.prototype[Symbol.for('nodejs.util.inspect.custom')] = LRUCacheWithDelete.prototype.inspect;
 }
 
-LRUCacheWithExpiry.prototype.beatsSince = function(t1, t2) {
-  return ((t2 - t1) / this.ttbeat) % this.agebins;
-};
-
-LRUCacheWithExpiry.prototype.getBeat = function() {
-  var nowT = this.getTime();
-  // console.log('getBeat', this.initT, nowT, nowT - this.initT, this.beatsSince(this.initT, nowT));
-  return this.beatsSince(this.initT, nowT);
-};
-
 /**
  * Method used to set the value for the given key in the cache.
  *
@@ -108,7 +116,7 @@ LRUCacheWithExpiry.prototype.getBeat = function() {
 LRUCacheWithExpiry.prototype.set = function(key, value) {
   LRUCacheWithDelete.prototype.set.call(this, key, value);
   var pointer = this.items[key];
-  this.ages[pointer] = this.getBeat();
+  this.ages[pointer] = this.getTime();
 };
 
 /**
@@ -125,18 +133,24 @@ LRUCacheWithExpiry.prototype.set = function(key, value) {
 LRUCacheWithExpiry.prototype.setpop = function(key, value) {
   var result = LRUCacheWithDelete.prototype.setpop.call(this, key, value);
   var pointer = this.items[key];
-  this.ages[pointer] = this.getBeat();
+  this.ages[pointer] = this.getTime();
   return result;
 };
+
+/**
+ * All items written before this time are due for expiry
+ */
+Object.defineProperty(LRUCacheWithExpiry.prototype, 'curfew', {
+  get() { return this.getTime() - this.ttk; }
+})
 
 /**
  * Delete all cached items older than this.ttk
  */
 LRUCacheWithExpiry.prototype.expire = function() {
   var currT = this.getTime();
-  var currB = this.getBeat();
   console.log('exp', this.V, this.ages, currT, currB);
-  var curfew = currB - this.beatsPerTTK;
+  var curfew = this.getTime()
   var ii;
   for (ii = 0; ii < this.capacity; ii++) {
     if (this.ages[ii] < curfew) {
