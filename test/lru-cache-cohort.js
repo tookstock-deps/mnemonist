@@ -3,8 +3,7 @@
  * ==============================
  */
 var assert = require('assert'),
-LRUCacheCohort = require('../lru-cache.js');
-// LRUCacheCohort = require('../lru-cache-cohort.js');
+LRUCacheCohort = require('../lru-cache-cohort.js');
 
 function timeFaker({initT, units = 60 * 1000}) {
   var fakeTime = {
