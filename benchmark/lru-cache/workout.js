@@ -7,6 +7,14 @@ var LRUCache = require('../../lru-cache.js'),
     LRUCacheWithDelete = require('../../lru-cache-with-delete.js'),
     LRUMapWithDelete = require('../../lru-map-with-delete.js');
 
+// TEST_CACHE=LRUMapWithDelete node --prof ./benchmark/lru-cache/workout.js ;
+// PFILE=`ls -1t isolate-* | head -n1`; node --prof-process $PFILE > $(basename $PFILE .log).prof.txt ; echo $PFILE;
+// mv $PFILE /tmp/prof/
+// ## OR ##
+// TEST_CACHE=LRUMapWithDelete TEST_REPS=1000 node --inspect-brk ./benchmark/lru-cache/workout.js
+// then open up chrome://inspect/#devices, look for this process;
+// kick it in gear until it gets past the setup, then witch to profiling and capture your trace.
+
 Benchmark.options.minSamples = 30;
 
 var CACHES = { LRUMap, LRUCache, LRUMapWithDelete, LRUCacheWithDelete };
@@ -15,6 +23,7 @@ var CacheFactory = CACHES[process.env.TEST_CACHE];
 if (! CacheFactory) {
   console.error("Please specify env var TEST_CACHE with one of", Object.keys(CACHES));
 }
+var TEST_REPS = Number(process.env.TEST_REPS) || 100;
 
 var {
   // StrKeys97, StrKeys70, StrKeysFlat, StrKeysOrdered,
@@ -26,7 +35,7 @@ var cache = Exerciser.makeLoadedCache(CacheFactory, NumKeysOrdered);
 
 var initT = Date.now();
 var lastT = initT;
-Exerciser.times(100, function (_info, ii) {
+Exerciser.times(TEST_REPS, function (_info, ii) {
   var currDT = new Date();
   var currT = currDT.valueOf();
   console.log(
