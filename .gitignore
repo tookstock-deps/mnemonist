@@ -7,3 +7,4 @@ build
 TODO.md
 isolate-*.log
 isolate-*.prof.txt
+prof/**/*.stack.txt
