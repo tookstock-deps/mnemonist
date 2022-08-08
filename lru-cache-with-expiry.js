@@ -7,9 +7,8 @@
 
 var LRUCacheWithDelete = require('./lru-cache-with-delete.js'),
     forEach = require('obliterator/foreach'),
-    typed = require('./utils/typed-arrays.js'),
+    // typed = require('./utils/typed-arrays.js'),
     iterables = require('./utils/iterables.js');
-
 
 // Besides the other ledgers of the backing cache, on every write operation
 // the update time is saved in a fixed-sized array. No other speed or memory
@@ -32,6 +31,9 @@ var LRUCacheWithDelete = require('./lru-cache-with-delete.js'),
 //   be harmless but would give no speedup, so if you found yourself
 //   in a situation where the expire was taking significant time it
 //   could be big trouble.
+//
+// * Due to floating-point shenanigans a custom clock returning
+//   fractional times may behave unexpectedly; why do you need them?
 //
 // Alternatives considered and discarded:
 //
@@ -70,20 +72,52 @@ var LRUCacheWithDelete = require('./lru-cache-with-delete.js'),
 //   every two minutes. Expiring a 100_000-entry cache takes ?? milliseconds.
 // When a write happens we record ((getTime() - lastExpireTime()) / (ttk / 32))
 //
+
+/**
+ *
+ * LRU cache with time-to-keep expiration
+ *
+ * Trades fast read/writes for guarantees on timely expiration or fast
+ * expiration loops.
+ *
+ * @param  {Iterable} iterable - Target iterable.
+ * @param  {function} Keys     - Array class for storing keys.
+ * @param  {function} Values   - Array class for storing values.
+ * @param  {number}   capacity - Cache's capacity.
+ * @param  {object}   capacity - Configuration
+ * @param  {function} [options.getTime = Date.now] - replaces the meaning of time (for mocking and to allow eg a vector clock). Will be called with the object and action as parameters.
+ * @param  {number}   [options.ttk = 15 minutes] - when expire is called all items whose update time is older than ttk milliseconds will be deleted. Other items may be as well, depending on implementation.
+ *
+ * @return {LRUCacheWithExpiry}
+ */
 function LRUCacheWithExpiry(Keys, Values, capacity, options = {}) {
-  if (arguments.length < 2) {
-    LRUCacheWithDelete.call(this, Keys);
+  if (arguments.length <= 1) {
+    options = {}; capacity = Keys;
+    LRUCacheWithDelete.call(this, capacity);
+  }
+  else if (arguments.length <= 2) {
+    options = Values; capacity = Keys;
+    LRUCacheWithDelete.call(this, capacity);
   }
   else {
     LRUCacheWithDelete.call(this, Keys, Values, capacity);
   }
-  this.getTime    = Date.now;
-  this.ttk        = options.ttk || LRUCacheWithExpiry.minutes(15);
-  this.ages       = new Float64Array(this.capacity);
+  if (options.ttl || options.ttl === 0) {
+    throw new Error('Please supply options.ttk (time-to-**keep**), not ttl (and understand the difference)');
+  }
+  this.getTime = options.getTime || Date.now;
+  this.ttk = options.ttk || LRUCacheWithExpiry.minutes(15);
+  this.ages = new Float64Array(this.capacity);
   //
-  this.initT = this.getTime();
+  this.initT = this.getTime('init', this);
   this.lastT = this.initT;
 }
+
+// FIXME: remove?
+LRUCacheWithExpiry.prototype.investigate = function(...args) {
+  // eslint-disable-next-line no-console
+  console.log(this.inspect({all: true}), ...args);
+};
 
 /**
  * LRUCacheWithExpiry inherits from LRUCacheWithDelete
@@ -105,6 +139,7 @@ if (typeof Symbol !== 'undefined') {
   });
   LRUCacheWithExpiry.prototype[Symbol.for('nodejs.util.inspect.custom')] = LRUCacheWithDelete.prototype.inspect;
 }
+Object.defineProperty(LRUCacheWithExpiry.prototype, 'summary', Object.getOwnPropertyDescriptor(LRUCacheWithDelete.prototype, 'summary'));
 
 /**
  * Method used to set the value for the given key in the cache.
@@ -116,7 +151,7 @@ if (typeof Symbol !== 'undefined') {
 LRUCacheWithExpiry.prototype.set = function(key, value) {
   LRUCacheWithDelete.prototype.set.call(this, key, value);
   var pointer = this.items[key];
-  this.ages[pointer] = this.getTime();
+  this.ages[pointer] = this.getTime('set', this);
 };
 
 /**
@@ -133,7 +168,7 @@ LRUCacheWithExpiry.prototype.set = function(key, value) {
 LRUCacheWithExpiry.prototype.setpop = function(key, value) {
   var result = LRUCacheWithDelete.prototype.setpop.call(this, key, value);
   var pointer = this.items[key];
-  this.ages[pointer] = this.getTime();
+  this.ages[pointer] = this.getTime('set', this);
   return result;
 };
 
@@ -141,24 +176,41 @@ LRUCacheWithExpiry.prototype.setpop = function(key, value) {
  * All items written before this time are due for expiry
  */
 Object.defineProperty(LRUCacheWithExpiry.prototype, 'curfew', {
-  get() { return this.getTime() - this.ttk; }
-})
+  get() { return this.getTime('check', this) - this.ttk; }
+});
 
 /**
  * Delete all cached items older than this.ttk
  */
 LRUCacheWithExpiry.prototype.expire = function() {
-  var currT = this.getTime();
-  console.log('exp', this.V, this.ages, currT, currB);
-  var curfew = this.getTime()
+  this.getTime('startExpire', this);
+  var curfew = this.curfew;
   var ii;
   for (ii = 0; ii < this.capacity; ii++) {
-    if (this.ages[ii] < curfew) {
-      console.log('del', ii, this.V[ii], this.ages[ii]);
+    if (this.ages[ii] <= curfew) {
       this.delete(this.K[ii]);
     }
   }
+  this.lastT = this.getTime('doneExpire', this);
 };
+
+// /**
+//  * Delete all cached items older than this.ttk
+//  */
+// LRUCacheWithExpiry.prototype.expireUsingLinkedList = function() {
+//   var currT = this.getTime('startExpire', this);
+//   var curfew = this.curfew
+//   // TODO: are there savings from unwinding the delete op into this?
+//   var pointer = this.head;
+//   while ((pointer !== this.tail) && (this.size > 1)) {
+//     if (this.ages[pointer] < curfew) {
+//       console.log('del', pointer, this.V[pointer], this.ages[pointer]);
+//       this.delete(this.K[pointer]);
+//     } else {
+//       this.pointer = this.backward[pointer]
+//     }
+//   }
+// };
 
 /**
  *
@@ -210,6 +262,7 @@ LRUCacheWithExpiry.from = function(iterable, Keys, Values, capacity, options) {
     capacity = Keys;
     Keys = null;
     Values = null;
+    options = {};
   }
 
   var cache = new LRUCacheWithExpiry(Keys, Values, capacity, options);

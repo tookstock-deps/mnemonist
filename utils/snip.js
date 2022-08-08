@@ -19,7 +19,7 @@ function snipToLast(iterator, proxy, {maxToDump = 20, size = Infinity, last = []
     proxy.set(step.value[0], step.value[1]);
     ii += 1;
   }
-  return proxy
+  return proxy;
 }
 
 module.exports.snipToLast = snipToLast;
