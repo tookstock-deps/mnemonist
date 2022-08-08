@@ -1,7 +1,7 @@
 var random = require('pandemonium/random');
 var Benchmark = require('benchmark')
-var Keymaster = require('./key-distributions.js');
-var Exerciser = require('./exercise-cache.js');
+var Keymaster = require('./helpers/key-distributions.js');
+var Exerciser = require('./helpers/cache-exercisers.js');
 var LRUCache = require('../../lru-cache.js'),
     LRUMap = require('../../lru-map.js'),
     LRUCacheWithDelete = require('../../lru-cache-with-delete.js'),

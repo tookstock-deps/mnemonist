@@ -1,7 +1,7 @@
 var randomString = require('pandemonium/random-string');
 var random = require('pandemonium/random');
-var typed = require('../../utils/typed-arrays.js');
-var {snipToLast} = require('../../utils/snip.js');
+var typed = require('../../../utils/typed-arrays.js');
+var {snipToLast} = require('../../../utils/snip.js');
 
 module.exports.random = random;
 module.exports.randomString = randomString;

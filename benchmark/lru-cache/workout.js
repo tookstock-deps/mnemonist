@@ -1,11 +1,12 @@
 var random = require('pandemonium/random');
 var Benchmark = require('benchmark')
-var Keymaster = require('./key-distributions.js');
-var Exerciser = require('./exercise-cache.js');
+var Keymaster = require('./helpers/key-distributions.js');
+var Exerciser = require('./helpers/cache-exercisers.js');
 var LRUCache = require('../../lru-cache.js'),
     LRUMap = require('../../lru-map.js'),
     LRUCacheWithDelete = require('../../lru-cache-with-delete.js'),
-    LRUMapWithDelete = require('../../lru-map-with-delete.js');
+    LRUMapWithDelete = require('../../lru-map-with-delete.js'),
+    LRUCacheWithExpiry = require('../../lru-cache-with-expiry.js');
 
 // TEST_CACHE=LRUMapWithDelete node --prof ./benchmark/lru-cache/workout.js ;
 // PFILE=`ls -1t isolate-* | head -n1`; node --prof-process $PFILE > $(basename $PFILE .log).prof.txt ; echo $PFILE;
@@ -17,11 +18,12 @@ var LRUCache = require('../../lru-cache.js'),
 
 Benchmark.options.minSamples = 30;
 
-var CACHES = { LRUMap, LRUCache, LRUMapWithDelete, LRUCacheWithDelete };
+var CACHES = { LRUMap, LRUCache, LRUMapWithDelete, LRUCacheWithDelete, LRUCacheWithExpiry };
 
 var CacheFactory = CACHES[process.env.TEST_CACHE];
 if (! CacheFactory) {
   console.error("Please specify env var TEST_CACHE with one of", Object.keys(CACHES));
+  process.exit(-9);
 }
 var TEST_REPS = Number(process.env.TEST_REPS) || 100;
 
